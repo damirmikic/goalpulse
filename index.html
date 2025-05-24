@@ -6,7 +6,9 @@
     <title>GoalPulse- Advanced Football Feed</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css"> </head>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+    <link rel="stylesheet" href="style.css">
+</head>
 <body>
     <div id="loader" class="loader"></div>
     <div id="errorMessage" class="error-message hidden"></div>
@@ -36,6 +38,15 @@
                     <h3 class="market-title">Expected Goals</h3>
                 </div>
                 <div id="expectedGoalsInfo" class="expected-goals-display"></div>
+            </div>
+            <div id="oddsChartContainer" class="market-section hidden">
+                <div class="market-title-container">
+                    <h3 id="oddsChartTitle" class="market-title">Odds Movement Chart</h3>
+                </div>
+                <div class="chart-canvas-container">
+                    <canvas id="oddsMovementChartCanvas"></canvas>
+                </div>
+                <p id="chartNoDataMessage" class="text-xs text-gray-500 p-2 hidden">Not enough data to display chart for this selection.</p>
             </div>
         </div>
 
@@ -82,5 +93,6 @@
         </div>
     </div>
 
-    <script src="script.js"></script> </body>
+    <script src="script.js"></script> 
+</body>
 </html>
