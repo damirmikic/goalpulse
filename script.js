@@ -28,6 +28,13 @@ const expectedGoalsInfoElem = document.getElementById('expectedGoalsInfo');
 const oddsChangesDisplay = document.getElementById('oddsChangesDisplay');
 const percentageChangeThresholdInput = document.getElementById('percentageChangeThreshold'); 
 
+// Chart Elements
+const oddsChartContainer = document.getElementById('oddsChartContainer');
+const oddsChartTitle = document.getElementById('oddsChartTitle');
+const oddsMovementChartCanvas = document.getElementById('oddsMovementChartCanvas');
+const chartNoDataMessage = document.getElementById('chartNoDataMessage');
+
+
 const loader = document.getElementById('loader');
 const errorMessageElem = document.getElementById('errorMessage');
 const refreshStatusElem = document.getElementById('refreshStatus');
@@ -40,10 +47,10 @@ let currentManualInputType = 'odds';
 let previousEventMarketOdds = {}; 
 let oddsChangesLog = []; 
 const MAX_CHANGES_DISPLAYED = 50; 
+let currentOddsChart = null; 
 
 const PRESELECTED_COMPETITION_KEY = "soccer-germany-dfb-pokal";
 const MAX_GOAL_ITERATIONS = 200; 
-const GOAL_LINE_CONSTANT = 2.5; 
 const FH_XG_RATIO = 0.50; 
 const REFRESH_INTERVAL_MS = 30000;
 let refreshIntervalId = null;
@@ -55,7 +62,7 @@ const LS_DESIRED_MARGIN = 'goalPulse_desiredMargin';
 const LS_LAST_COMPETITION_KEY = 'goalPulse_lastCompetitionKey';
 
 // Value Bet Highlighter Threshold
-const VALUE_BET_THRESHOLD_PERCENT = 5; // Highlight if user's price is 5% or more higher than feed price
+const VALUE_BET_THRESHOLD_PERCENT = 5; 
 
 
 // --- Helper Function Definitions ---
@@ -92,14 +99,14 @@ function poissonPmf(k, lambda) {
 
 function calculateHomeAndUnderProbs(homeExpectedGoals, awayExpectedGoals, goalLine) { 
     let homeWinProbSum = 0, awayWinProbSum = 0, underProbSum = 0, overProbSum = 0;
-    const maxScore = 20;
+    const maxScore = 20; 
     for (let i = 0; i <= maxScore; i++) {
         for (let j = 0; j <= maxScore; j++) {
             const jointProb = poissonPmf(i, homeExpectedGoals) * poissonPmf(j, awayExpectedGoals);
             if (isNaN(jointProb) || jointProb === 0) continue;
             if (i > j) homeWinProbSum += jointProb;
             else if (j > i) awayWinProbSum += jointProb;
-            if ((i + j) < goalLine) underProbSum += jointProb;
+            if ((i + j) < goalLine) underProbSum += jointProb; 
             else if ((i + j) > goalLine) overProbSum += jointProb;
         }
     }
@@ -113,16 +120,19 @@ function calculateHomeAndUnderProbs(homeExpectedGoals, awayExpectedGoals, goalLi
 
 function calculateFairProbsFromLambdas(lambdaHomeFT, lambdaAwayFT) {
     let probHome = 0, probDraw = 0, probAway = 0;
-    let probUnder25 = 0;
     let probBttsYes = 0;
+
+    let probUnder05FT = 0, probUnder075FT = 0, probUnder1FT = 0, probUnder125FT = 0, probUnder15FT = 0, probUnder175FT = 0, 
+        probUnder2FT = 0, probUnder225FT = 0, probUnder25FT = 0, probUnder275FT = 0, probUnder3FT = 0, probUnder325FT = 0,
+        probUnder35FT = 0, probUnder375FT = 0, probUnder4FT = 0, probUnder425FT = 0, probUnder45FT = 0;
     
     const probHome0FT = poissonPmf(0, lambdaHomeFT);
     const probAway0FT = poissonPmf(0, lambdaAwayFT);
     probBttsYes = 1 - probHome0FT - probAway0FT + (probHome0FT * probAway0FT);
 
-    const maxScore = 20;
-    for (let i = 0; i <= maxScore; i++) { 
-        for (let j = 0; j <= maxScore; j++) { 
+    const maxScoreCalc = 20; 
+    for (let i = 0; i <= maxScoreCalc; i++) { 
+        for (let j = 0; j <= maxScoreCalc; j++) { 
             const jointProb = poissonPmf(i, lambdaHomeFT) * poissonPmf(j, lambdaAwayFT);
             if (isNaN(jointProb) || jointProb === 0) continue;
 
@@ -130,44 +140,96 @@ function calculateFairProbsFromLambdas(lambdaHomeFT, lambdaAwayFT) {
             else if (j > i) probAway += jointProb;
             else probDraw += jointProb;
 
-            if (i + j < GOAL_LINE_CONSTANT) probUnder25 += jointProb;
+            const totalGoalsInIteration = i + j;
+            if (totalGoalsInIteration < 0.5) probUnder05FT += jointProb;
+            if (totalGoalsInIteration < 0.75) probUnder075FT += jointProb;
+            if (totalGoalsInIteration < 1.0) probUnder1FT += jointProb;
+            if (totalGoalsInIteration < 1.25) probUnder125FT += jointProb;
+            if (totalGoalsInIteration < 1.5) probUnder15FT += jointProb;
+            if (totalGoalsInIteration < 1.75) probUnder175FT += jointProb;
+            if (totalGoalsInIteration < 2.0) probUnder2FT += jointProb;
+            if (totalGoalsInIteration < 2.25) probUnder225FT += jointProb;
+            if (totalGoalsInIteration < 2.5) probUnder25FT += jointProb;
+            if (totalGoalsInIteration < 2.75) probUnder275FT += jointProb;
+            if (totalGoalsInIteration < 3.0) probUnder3FT += jointProb;
+            if (totalGoalsInIteration < 3.25) probUnder325FT += jointProb;
+            if (totalGoalsInIteration < 3.5) probUnder35FT += jointProb;
+            if (totalGoalsInIteration < 3.75) probUnder375FT += jointProb;
+            if (totalGoalsInIteration < 4.0) probUnder4FT += jointProb;
+            if (totalGoalsInIteration < 4.25) probUnder425FT += jointProb;
+            if (totalGoalsInIteration < 4.5) probUnder45FT += jointProb;
         }
     }
     const totalMatchProb = probHome + probDraw + probAway; 
-     if (totalMatchProb > 0 && Math.abs(1 - totalMatchProb) > 1e-5) { 
-        probHome /= totalMatchProb;
-        probDraw /= totalMatchProb;
-        probAway /= totalMatchProb;
+     if (totalMatchProb > 0 && Math.abs(1 - totalMatchProb) > 1e-4) { 
+        const normFactor = 1 / totalMatchProb;
+        probHome *= normFactor;
+        probDraw *= normFactor;
+        probAway *= normFactor;
     }
-    const probOver25 = 1 - probUnder25; 
-
+    
     const lambdaHomeFH = lambdaHomeFT * FH_XG_RATIO;
     const lambdaAwayFH = lambdaAwayFT * FH_XG_RATIO;
     
-    const probFH_0_0 = poissonPmf(0, lambdaHomeFH) * poissonPmf(0, lambdaAwayFH);
-    const probUnder05FH = probFH_0_0;
-    const probOver05FH = 1 - probUnder05FH;
+    let probUnder05FH = 0, probUnder075FH = 0, probUnder1FH = 0, probUnder125FH = 0, probUnder15FH = 0;
 
-    let probUnder15FH = probFH_0_0; 
-    probUnder15FH += poissonPmf(1, lambdaHomeFH) * poissonPmf(0, lambdaAwayFH); 
-    probUnder15FH += poissonPmf(0, lambdaHomeFH) * poissonPmf(1, lambdaAwayFH); 
-    const probOver15FH = 1 - probUnder15FH;
+    for (let i = 0; i <= maxScoreCalc; i++) { 
+        for (let j = 0; j <= maxScoreCalc; j++) {
+            const jointProbFH = poissonPmf(i, lambdaHomeFH) * poissonPmf(j, lambdaAwayFH);
+            if (isNaN(jointProbFH) || jointProbFH === 0) continue;
 
+            const totalGoalsFHInIteration = i + j;
+            if (totalGoalsFHInIteration < 0.5) probUnder05FH += jointProbFH;
+            if (totalGoalsFHInIteration < 0.75) probUnder075FH += jointProbFH;
+            if (totalGoalsFHInIteration < 1.0) probUnder1FH += jointProbFH;
+            if (totalGoalsFHInIteration < 1.25) probUnder125FH += jointProbFH;
+            if (totalGoalsFHInIteration < 1.5) probUnder15FH += jointProbFH;
+        }
+    }
 
     return {
         home: probHome, draw: probDraw, away: probAway,
-        over25: probOver25, under25: probUnder25,
-        bttsYes: probBttsYes, bttsNo: 1 - probBttsYes,
-        over05FH: probOver05FH, under05FH: probUnder05FH,
-        over15FH: probOver15FH, under15FH: probUnder15FH
+        over05: Math.max(0, 1 - probUnder05FT), under05: probUnder05FT,
+        over075: Math.max(0, 1 - probUnder075FT), under075: probUnder075FT,
+        over1: Math.max(0, 1 - probUnder1FT), under1: probUnder1FT,
+        over125: Math.max(0, 1 - probUnder125FT), under125: probUnder125FT,
+        over15: Math.max(0, 1 - probUnder15FT), under15: probUnder15FT,
+        over175: Math.max(0, 1 - probUnder175FT), under175: probUnder175FT,
+        over2: Math.max(0, 1 - probUnder2FT), under2: probUnder2FT,
+        over225: Math.max(0, 1 - probUnder225FT), under225: probUnder225FT,
+        over25: Math.max(0, 1 - probUnder25FT), under25: probUnder25FT,
+        over275: Math.max(0, 1 - probUnder275FT), under275: probUnder275FT,
+        over3: Math.max(0, 1 - probUnder3FT), under3: probUnder3FT,
+        over325: Math.max(0, 1 - probUnder325FT), under325: probUnder325FT,
+        over35: Math.max(0, 1 - probUnder35FT), under35: probUnder35FT,
+        over375: Math.max(0, 1 - probUnder375FT), under375: probUnder375FT,
+        over4: Math.max(0, 1 - probUnder4FT), under4: probUnder4FT,
+        over425: Math.max(0, 1 - probUnder425FT), under425: probUnder425FT,
+        over45: Math.max(0, 1 - probUnder45FT), under45: probUnder45FT,
+        bttsYes: probBttsYes, bttsNo: Math.max(0, 1 - probBttsYes),
+        over05FH: Math.max(0, 1 - probUnder05FH), under05FH: probUnder05FH,
+        over075FH: Math.max(0, 1 - probUnder075FH), under075FH: probUnder075FH,
+        over1FH: Math.max(0, 1 - probUnder1FH), under1FH: probUnder1FH,
+        over125FH: Math.max(0, 1 - probUnder125FH), under125FH: probUnder125FH,
+        over15FH: Math.max(0, 1 - probUnder15FH), under15FH: probUnder15FH
     };
 }
 
 function applyMarginToFairProbs(fairProbs, desiredMarginDecimal) {
     const odds = {};
-    const outcomes = ['home', 'draw', 'away', 'over25', 'under25', 'bttsYes', 'bttsNo', 'over05FH', 'under05FH', 'over15FH', 'under15FH'];
+    const outcomes = [
+        'home', 'draw', 'away', 
+        'over05', 'under05', 'over075', 'under075', 'over1', 'under1', 'over125', 'under125', 
+        'over15', 'under15', 'over175', 'under175', 'over2', 'under2', 'over225', 'under225',
+        'over25', 'under25', 'over275', 'under275', 'over3', 'under3', 'over325', 'under325',
+        'over35', 'under35', 'over375', 'under375', 'over4', 'under4', 'over425', 'under425',
+        'over45', 'under45',
+        'bttsYes', 'bttsNo', 
+        'over05FH', 'under05FH', 'over075FH', 'under075FH', 'over1FH', 'under1FH', 
+        'over125FH', 'under125FH', 'over15FH', 'under15FH'
+    ];
     outcomes.forEach(outcome => {
-        if (fairProbs[outcome] != null && fairProbs[outcome] > 0) {
+        if (fairProbs[outcome] != null && fairProbs[outcome] > 1e-9) { 
             odds[outcome] = ((1 - desiredMarginDecimal) / fairProbs[outcome]).toFixed(3);
         } else {
             odds[outcome] = "N/A"; 
@@ -184,6 +246,7 @@ function calculateExpectedGoalsFromPrices(overPrice, underPrice, homeWinPrice, a
     }
     let totalGoals = 2.5, supremacy = 0;
     const incrementStep = 0.05, smallPositiveEG = 0.01;
+    const GOAL_LINE_FOR_SOLVER = 2.5; 
     const normalisedUnderTarget = (1/underPrice) / ((1/overPrice) + (1/underPrice));
     const normalisedHomeTarget = (1/homeWinPrice) / ((1/awayWinPrice) + (1/homeWinPrice));
 
@@ -192,7 +255,7 @@ function calculateExpectedGoalsFromPrices(overPrice, underPrice, homeWinPrice, a
     }
     let currentHomeEG, currentAwayEG, output, incrementTotal, error, previousError;
 
-    output = calculateHomeAndUnderProbs(Math.max(smallPositiveEG, totalGoals/2 + supremacy/2), Math.max(smallPositiveEG, totalGoals/2 - supremacy/2), GOAL_LINE_CONSTANT);
+    output = calculateHomeAndUnderProbs(Math.max(smallPositiveEG, totalGoals/2 + supremacy/2), Math.max(smallPositiveEG, totalGoals/2 - supremacy/2), GOAL_LINE_FOR_SOLVER);
     if (isNaN(output.underProb)) { console.warn("Initial underProb NaN"); return null; }
     
     incrementTotal = (output.underProb > normalisedUnderTarget) ? incrementStep : -incrementStep; 
@@ -207,12 +270,12 @@ function calculateExpectedGoalsFromPrices(overPrice, underPrice, homeWinPrice, a
         currentHomeEG = Math.max(smallPositiveEG, totalGoals/2 + supremacy/2);
         currentAwayEG = Math.max(smallPositiveEG, totalGoals/2 - supremacy/2);
         if (totalGoals < smallPositiveEG * 2 || currentHomeEG <=0 || currentAwayEG <=0 ) { totalGoals -= incrementTotal; break; }
-        output = calculateHomeAndUnderProbs(currentHomeEG, currentAwayEG, GOAL_LINE_CONSTANT);
+        output = calculateHomeAndUnderProbs(currentHomeEG, currentAwayEG, GOAL_LINE_FOR_SOLVER);
         if (isNaN(output.underProb)) { totalGoals -= incrementTotal; break; }
         error = Math.abs(output.underProb - normalisedUnderTarget);
     }
     
-    output = calculateHomeAndUnderProbs(Math.max(smallPositiveEG, totalGoals/2 + supremacy/2), Math.max(smallPositiveEG, totalGoals/2 - supremacy/2), GOAL_LINE_CONSTANT);
+    output = calculateHomeAndUnderProbs(Math.max(smallPositiveEG, totalGoals/2 + supremacy/2), Math.max(smallPositiveEG, totalGoals/2 - supremacy/2), GOAL_LINE_FOR_SOLVER);
     if (isNaN(output.homeProb)) { console.warn("Initial homeProb for supremacy NaN"); return null; }
     let incrementSup = (output.homeProb > normalisedHomeTarget) ? -incrementStep : incrementStep;
     error = Math.abs(output.homeProb - normalisedHomeTarget);
@@ -225,7 +288,7 @@ function calculateExpectedGoalsFromPrices(overPrice, underPrice, homeWinPrice, a
         currentHomeEG = Math.max(smallPositiveEG, totalGoals/2 + supremacy/2);
         currentAwayEG = Math.max(smallPositiveEG, totalGoals/2 - supremacy/2);
         if (currentHomeEG <= 0 || currentAwayEG <= 0) { supremacy -= incrementSup; break; }
-        output = calculateHomeAndUnderProbs(currentHomeEG, currentAwayEG, GOAL_LINE_CONSTANT);
+        output = calculateHomeAndUnderProbs(currentHomeEG, currentAwayEG, GOAL_LINE_FOR_SOLVER);
         if (isNaN(output.homeProb)) { supremacy -= incrementSup; break; }
         error = Math.abs(output.homeProb - normalisedHomeTarget);
     }
@@ -242,8 +305,14 @@ function calculateExpectedGoalsFromPrices(overPrice, underPrice, homeWinPrice, a
 function formatCompetitionDisplayText(key) {
     let displayName = key;
     if (displayName.startsWith("soccer-")) displayName = displayName.substring(7);
-    displayName = displayName.replace(/-/g, " ");
-    return displayName.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+    displayName = displayName.replace(/-/g, " "); 
+    
+    displayName = displayName.replace(/\b[a-z]\d{2}[a-z]{2}\b/g, '');
+    
+    displayName = displayName.trim().replace(/\s+/g, ' '); 
+    
+    displayName = displayName.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+    return displayName;
 }
 
 function trackAndLogOddsChanges(currentEventsData) {
@@ -272,7 +341,9 @@ function trackAndLogOddsChanges(currentEventsData) {
                                           selections.find(s => s.outcome === o_val && s.params === params) :
                                           selections.find(s => s.outcome === o_val);
                         const currentPriceFromAPI = selection?.price; 
-                        const key = `${outcomePrefix}_${params ? params.replace("total=","") + "_" : ""}${o_val}`; 
+                        // Ensure param in key is sanitized (e.g. total=1.25 -> total125)
+                        const paramKeyPart = params ? params.replace("total=", "").replace(".", "") + "_" : "";
+                        const key = `${outcomePrefix}_${paramKeyPart}${o_val}`; 
 
                         if (currentPriceFromAPI != null) currentEventOdds[key] = currentPriceFromAPI;
                         
@@ -311,27 +382,66 @@ function trackAndLogOddsChanges(currentEventsData) {
                     });
                 }
             };
+            
+            // Process market with all selections if params is null
+            const processMarketAllSelections = (marketName, marketKey, submarketKey, outcomePrefix) => {
+                const submarket = event.markets?.[marketKey]?.submarkets?.[submarketKey];
+                if (submarket?.selections) {
+                    submarket.selections.forEach(selection => {
+                        const currentPriceFromAPI = selection.price;
+                        const paramKeyPart = selection.params ? selection.params.replace("total=", "").replace(".", "") + "_" : "";
+                        const key = `${outcomePrefix}_${paramKeyPart}${selection.outcome}`;
+
+                        if (currentPriceFromAPI != null) currentEventOdds[key] = currentPriceFromAPI;
+
+                        const oldPriceNum = prevEventOddsForCurrentEvent[key];
+                         if (oldPriceNum != null && currentPriceFromAPI != null && !isNaN(oldPriceNum) && !isNaN(currentPriceFromAPI)) {
+                            let meetsThreshold = false;
+                            let percentageDifferenceCalc = 0;
+                            if (oldPriceNum.toFixed(3) === currentPriceFromAPI.toFixed(3)) {
+                                meetsThreshold = false;
+                            } else if (oldPriceNum === 0) {
+                                percentageDifferenceCalc = Infinity;
+                                meetsThreshold = true;
+                            } else {
+                                percentageDifferenceCalc = Math.abs((currentPriceFromAPI - oldPriceNum) / oldPriceNum) * 100;
+                                if (percentageDifferenceCalc >= userDefinedMinPercentageChange) {
+                                    meetsThreshold = true;
+                                }
+                            }
+                            if (meetsThreshold) {
+                                newChanges.push({ 
+                                    timestamp: new Date(), 
+                                    eventName: eventNameForLog, 
+                                    market: `${marketName} ${selection.params ? selection.params.replace("total=","") : ''}`, 
+                                    outcome: selection.outcome.charAt(0).toUpperCase() + selection.outcome.slice(1), 
+                                    oldPrice: oldPriceNum, 
+                                    newPrice: currentPriceFromAPI,
+                                    percentageChange: percentageDifferenceCalc 
+                                });
+                            }
+                        }
+                    });
+                }
+            };
+
 
             processMarket("Match Odds", "soccer.match_odds", "period=ft", ['home', 'draw', 'away'], "mo");
             processMarket("BTTS", "soccer.both_teams_to_score", "period=ft", ['yes', 'no'], "btts");
-            processMarket("Total Goals", "soccer.total_goals", "period=ft", ['over', 'under'], "tg", "total=2.5");
             
+            // For Total Goals FT, process all available selections under the submarket
+            processMarketAllSelections("Total Goals", "soccer.total_goals", "period=ft", "tg");
+            
+            // For FH Total Goals, find the correct submarket key first
             const fhTgMarket = event.markets?.['soccer.total_goals_period_first_half']?.submarkets;
-            let fhLine = null, fhKeyPrefix = null, fhSelectionsForTracking = null, fhSubmarketKey = null;
-
+            let fhSubmarketKeyToUse = null;
             if (fhTgMarket) {
-                if (fhTgMarket['period=fh;total=1.5'] || fhTgMarket['period=1h;total=1.5']) {
-                    fhSubmarketKey = fhTgMarket['period=fh;total=1.5'] ? 'period=fh;total=1.5' : 'period=1h;total=1.5';
-                    fhSelectionsForTracking = fhTgMarket[fhSubmarketKey]?.selections;
-                    fhLine = 1.5; fhKeyPrefix = 'fh_tg_1.5';
-                } else if (fhTgMarket['period=fh;total=0.5'] || fhTgMarket['period=1h;total=0.5']) {
-                    fhSubmarketKey = fhTgMarket['period=fh;total=0.5'] ? 'period=fh;total=0.5' : 'period=1h;total=0.5';
-                    fhSelectionsForTracking = fhTgMarket[fhSubmarketKey]?.selections;
-                    fhLine = 0.5; fhKeyPrefix = 'fh_tg_0.5';
-                }
+                if (fhTgMarket['period=1h']) fhSubmarketKeyToUse = 'period=1h';
+                else if (fhTgMarket['period=fh']) fhSubmarketKeyToUse = 'period=fh';
+                // Add more fallbacks if API uses other keys
             }
-            if(fhSelectionsForTracking && fhLine != null && fhSubmarketKey){
-                 processMarket(`1H Total ${fhLine}`, "soccer.total_goals_period_first_half", fhSubmarketKey, ['over', 'under'], fhKeyPrefix, `total=${fhLine}`);
+            if (fhSubmarketKeyToUse) {
+                processMarketAllSelections("1H Total", "soccer.total_goals_period_first_half", fhSubmarketKeyToUse, "fhtg");
             }
 
             if(Object.keys(currentEventOdds).length > 0) previousEventMarketOdds[event.key] = currentEventOdds;
@@ -393,23 +503,25 @@ async function fetchData(isTriggeredByToggle = false) {
                 const bttsSelections = event.markets?.['soccer.both_teams_to_score']?.submarkets?.['period=ft']?.selections;
                 if (bttsSelections) bttsSelections.forEach(s => eventOdds[`btts_${s.outcome}`] = s.price);
 
-                const tgSelections = event.markets?.['soccer.total_goals']?.submarkets?.['period=ft']?.selections;
-                 if (tgSelections) {
-                    tgSelections.filter(s => s.params === "total=2.5").forEach(s => eventOdds[`tg_2.5_${s.outcome}`] = s.price);
+                const tgAPISelections = event.markets?.['soccer.total_goals']?.submarkets?.['period=ft']?.selections;
+                if (tgAPISelections) {
+                    tgAPISelections.forEach(s => {
+                        const paramKeyPart = s.params ? s.params.replace("total=", "").replace(".", "") + "_" : "";
+                        eventOdds[`tg_${paramKeyPart}${s.outcome}`] = s.price;
+                    });
                 }
-                const fhTgMarket = event.markets?.['soccer.total_goals_period_first_half']?.submarkets;
-                if (fhTgMarket) {
-                    let fhLine = null, fhKeyPrefix = null, fhSels = null, fhSubmarketKey = null;
-                    if (fhTgMarket['period=fh;total=1.5'] || fhTgMarket['period=1h;total=1.5']) {
-                        fhSubmarketKey = fhTgMarket['period=fh;total=1.5'] ? 'period=fh;total=1.5' : 'period=1h;total=1.5';
-                        fhSels = fhTgMarket[fhSubmarketKey]?.selections;
-                        fhLine = 1.5; fhKeyPrefix = 'fh_tg_1.5';
-                    } else if (fhTgMarket['period=fh;total=0.5'] || fhTgMarket['period=1h;total=0.5']) {
-                         fhSubmarketKey = fhTgMarket['period=fh;total=0.5'] ? 'period=fh;total=0.5' : 'period=1h;total=0.5';
-                        fhSels = fhTgMarket[fhSubmarketKey]?.selections;
-                        fhLine = 0.5; fhKeyPrefix = 'fh_tg_0.5';
+                const fhTgAPIMarkets = event.markets?.['soccer.total_goals_period_first_half']?.submarkets;
+                if (fhTgAPIMarkets) {
+                    let fhSubmarketKeyToUse = null;
+                    if (fhTgAPIMarkets['period=1h']) fhSubmarketKeyToUse = 'period=1h';
+                    else if (fhTgAPIMarkets['period=fh']) fhSubmarketKeyToUse = 'period=fh';
+
+                    if (fhSubmarketKeyToUse && fhTgAPIMarkets[fhSubmarketKeyToUse]?.selections) {
+                        fhTgAPIMarkets[fhSubmarketKeyToUse].selections.forEach(s => {
+                             const paramKeyPart = s.params ? s.params.replace("total=", "").replace(".", "") + "_" : "";
+                             eventOdds[`fhtg_${paramKeyPart}${s.outcome}`] = s.price;
+                        });
                     }
-                    if(fhSels) fhSels.forEach(s => eventOdds[`${fhKeyPrefix}_${s.outcome}`] = s.price);
                 }
                 if(Object.keys(eventOdds).length > 0) tempPreviousOdds[event.key] = eventOdds;
             });
@@ -461,7 +573,6 @@ async function fetchData(isTriggeredByToggle = false) {
             populateEventsList(currentCompetitionKey); 
             
             if (selectedEventKeyGlobal && document.querySelector(`.event-item[data-event-key="${selectedEventKeyGlobal}"]`)) {
-                // Event still exists
             } else if (eventsListDiv.firstChild && eventsListDiv.querySelector('.event-item')) { 
                 selectedEventKeyGlobal = eventsListDiv.querySelector('.event-item').dataset.eventKey;
             } else {
@@ -591,30 +702,149 @@ function updateExpectedGoalsDisplay(eventKey, homeXG, awayXG, totalXG, supremacy
     expectedGoalsInfoElem.innerHTML = egHtml;
 }
 
-function createOddsSelectionHTML(outcomeName, feedPrice, feedMaxStake, feedProbability, eventKey, marketType, outcomeType, isEventInManualMode, currentManualEditType, manualEventData) {
+function renderOddsMovementChart(eventName, marketNameForLog, outcomeNameForLog) {
+    if (!eventName || !marketNameForLog || !outcomeNameForLog) {
+        oddsChartContainer.classList.add('hidden');
+        return;
+    }
+
+    const relevantChanges = oddsChangesLog.filter(change =>
+        change.eventName === eventName &&
+        change.market === marketNameForLog &&
+        change.outcome === outcomeNameForLog
+    ).sort((a, b) => a.timestamp - b.timestamp); 
+
+    const labels = [];
+    const dataPoints = [];
+
+    if (relevantChanges.length > 0) {
+        const firstChange = relevantChanges[0];
+        const initialTimestamp = new Date(firstChange.timestamp.getTime() - 1000); 
+        labels.push(initialTimestamp.toLocaleTimeString());
+        dataPoints.push(firstChange.oldPrice);
+    }
+    
+    relevantChanges.forEach(change => {
+        labels.push(change.timestamp.toLocaleTimeString());
+        dataPoints.push(change.newPrice);
+    });
+    
+    if (dataPoints.length < 2) { 
+        oddsChartContainer.classList.remove('hidden');
+        oddsMovementChartCanvas.classList.add('hidden');
+        chartNoDataMessage.classList.remove('hidden');
+        chartNoDataMessage.textContent = `Not enough data to display chart for ${marketNameForLog} - ${outcomeNameForLog}.`;
+        oddsChartTitle.textContent = `Odds Chart: ${marketNameForLog} - ${outcomeNameForLog}`;
+        if (currentOddsChart) {
+            currentOddsChart.destroy();
+            currentOddsChart = null;
+        }
+        return;
+    }
+
+
+    oddsChartContainer.classList.remove('hidden');
+    oddsMovementChartCanvas.classList.remove('hidden');
+    chartNoDataMessage.classList.add('hidden');
+    oddsChartTitle.textContent = `Odds Chart: ${marketNameForLog} - ${outcomeNameForLog}`;
+
+    if (currentOddsChart) {
+        currentOddsChart.destroy();
+    }
+
+    const ctx = oddsMovementChartCanvas.getContext('2d');
+    currentOddsChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: `Odds for ${outcomeNameForLog}`,
+                data: dataPoints,
+                borderColor: 'rgb(75, 192, 192)',
+                tension: 0.1,
+                fill: false
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: {
+                    beginAtZero: false, 
+                    title: {
+                        display: true,
+                        text: 'Odds'
+                    }
+                },
+                x: {
+                    title: {
+                        display: true,
+                        text: 'Time (Session)'
+                    }
+                }
+            },
+            plugins: {
+                legend: {
+                    display: true
+                },
+                tooltip: {
+                    mode: 'index',
+                    intersect: false,
+                }
+            }
+        }
+    });
+}
+
+
+function createOddsSelectionHTML(outcomeName, feedPrice, feedMaxStake, feedProbability, eventKey, marketType, outcomeType, isEventInManualMode, currentManualEditType, manualEventData, line = null) {
     let displayPriceForInput;
     let detailsHtml;
     const isOddsInputDisabled = isEventInManualMode && (currentManualEditType === 'supremacy' || currentManualEditType === 'semi_auto');
     let prominentImpliedProbDisplay = 'N/A';
-    let valueHighlightClass = ''; // For value bet highlighter
+    let valueHighlightClass = ''; 
+
+    let marketNameForLog = '';
+    let outcomeNameForLog = outcomeName; 
+
+    if (marketType === 'match_odds') marketNameForLog = "Match Odds";
+    else if (marketType === 'btts') marketNameForLog = "BTTS";
+    else if (marketType === 'total_goals' && line) { 
+        marketNameForLog = `Total Goals ${line}`; 
+    } else if (marketType === 'fh_total_goals' && line) {
+        marketNameForLog = `1H Total ${line}`;
+    }
+    
+    if (outcomeType.toLowerCase().startsWith('over') || outcomeType.toLowerCase().startsWith('under')) {
+        outcomeNameForLog = outcomeName.split(' ')[0]; 
+    }
+
+
+    const chartIconSvg = `
+        <svg class="chart-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" 
+             data-event-name="${selectedEventNameElem.textContent}" 
+             data-market-name-log="${marketNameForLog}" 
+             data-outcome-name-log="${outcomeNameForLog}">
+            <path d="M16 6l2.29 2.29-4.88 4.88-4-4L2 16.59 3.41 18l6-6 4 4 6.3-6.29L22 12V6z"/>
+        </svg>`;
+
 
     if (isEventInManualMode) {
-        let manualEffectivePrice; // This is the user's price
+        let manualEffectivePrice; 
         if (currentManualEditType === 'supremacy' || currentManualEditType === 'semi_auto') {
             manualEffectivePrice = parseFloat(manualEventData?.impliedOdds?.[outcomeType] || feedPrice || 1.001);
-        } else { // 'odds' edit mode
+        } else { 
             manualEffectivePrice = parseFloat(manualEventData?.[outcomeType] || feedPrice || 1.001);
         }
         displayPriceForInput = manualEffectivePrice;
 
         const feedPriceNum = parseFloat(feedPrice);
-        let percentageDifferenceText = 'N/A'; // Diff between manual price and feed price
+        let percentageDifferenceText = 'N/A'; 
 
         if (!isNaN(manualEffectivePrice) && !isNaN(feedPriceNum) && feedPriceNum !== 0) {
             const percentageDifference = ((manualEffectivePrice - feedPriceNum) / feedPriceNum) * 100;
             percentageDifferenceText = percentageDifference.toFixed(2) + '%';
 
-            // Check for value bet against feed price
             if (manualEffectivePrice > feedPriceNum && percentageDifference >= VALUE_BET_THRESHOLD_PERCENT) {
                 valueHighlightClass = 'value-bet-highlight';
             }
@@ -632,6 +862,7 @@ function createOddsSelectionHTML(outcomeName, feedPrice, feedMaxStake, feedProba
         
         return `
             <div class="odds-selection manual-odds-input-container ${valueHighlightClass}">
+                ${marketNameForLog && outcomeNameForLog && marketNameForLog !== "N/A" ? chartIconSvg : ''}
                 <div class="odds-outcome">${outcomeName}</div>
                 <input type="number" class="manual-odds-input" step="0.001" value="${parseFloat(displayPriceForInput || 1.001).toFixed(3)}" 
                        data-event-key="${eventKey}" data-market-type="${marketType}" data-outcome-type="${outcomeType}" ${isOddsInputDisabled ? 'disabled' : ''}>
@@ -639,9 +870,9 @@ function createOddsSelectionHTML(outcomeName, feedPrice, feedMaxStake, feedProba
                 <div class="odds-details">${detailsHtml}</div>
             </div>`;
 
-    } else { // Non-Manual Mode
+    } else { 
         displayPriceForInput = feedPrice;
-        valueHighlightClass = ''; // No value highlighting in non-manual mode against itself
+        valueHighlightClass = ''; 
 
         if (feedProbability != null) { 
             prominentImpliedProbDisplay = `${(feedProbability * 100).toFixed(1)}%`;
@@ -660,6 +891,7 @@ function createOddsSelectionHTML(outcomeName, feedPrice, feedMaxStake, feedProba
 
         return `
             <div class="odds-selection ${valueHighlightClass}">
+                 ${marketNameForLog && outcomeNameForLog && marketNameForLog !== "N/A" ? chartIconSvg : ''}
                 <div class="odds-outcome">${outcomeName}</div>
                 <div class="odds-price">${displayPriceForInput != null ? parseFloat(displayPriceForInput).toFixed(3) : 'N/A'}</div>
                 <div class="implied-probability">${prominentImpliedProbDisplay}</div>
@@ -682,6 +914,15 @@ function displaySelectedInfo(competitionKey, eventKey) {
     supremacyExpectancyInputsDiv.classList.add('hidden');
     desiredMarginInputContainer.classList.add('hidden');
 
+    if (currentOddsChart) {
+        currentOddsChart.destroy();
+        currentOddsChart = null;
+    }
+    oddsChartContainer.classList.add('hidden');
+    oddsMovementChartCanvas.classList.remove('hidden'); 
+    chartNoDataMessage.classList.add('hidden');
+
+
     document.querySelectorAll('.event-item').forEach(item => item.classList.remove('selected'));
     if (eventKey) {
         const currentEventElement = eventsListDiv.querySelector(`.event-item[data-event-key="${eventKey}"]`);
@@ -696,7 +937,7 @@ function displaySelectedInfo(competitionKey, eventKey) {
     const event = competition.events.find(evt => evt.key === eventKey);
     if (!event) { selectedEventNameElem.textContent = 'Event not found'; return; }
 
-    selectedEventNameElem.textContent = event.name || 'N/A';
+    selectedEventNameElem.textContent = event.name || 'N/A'; 
     modeToggleContainer.classList.remove('hidden'); 
     const isCurrentlyManual = !!manualModeEvents[eventKey];
     manualModeToggle.checked = isCurrentlyManual; 
@@ -742,81 +983,90 @@ function displaySelectedInfo(competitionKey, eventKey) {
     const isOddsInputDisabled = isCurrentlyManual && (currentManualInputType === 'supremacy' || currentManualInputType === 'semi_auto');
     let currentManualEventData = isCurrentlyManual ? manualModeEvents[eventKey] : {};
 
-    let egHomePrice, egAwayPrice, egOver25Price, egUnder25Price;
+    let egHomePrice, egAwayPrice, egOver25Price, egUnder25Price; 
     let calculatedSupremacy, calculatedTotalXG, lambdaHomeForDisplay, lambdaAwayForDisplay;
 
     // --- Match Odds ---
-    let homeProb = null, drawProb = null, awayProb = null;
     let matchOddsMarginText = "Margin: N/A";
-    const matchOddsMarket = event.markets?.['soccer.match_odds']?.submarkets?.['period=ft']?.selections;
+    const matchOddsMarketAPI = event.markets?.['soccer.match_odds']?.submarkets?.['period=ft']?.selections;
     let matchOddsGridHtml = '<div class="odds-grid match-odds-grid">';
     
-    if (matchOddsMarket || isCurrentlyManual) { 
+    if (matchOddsMarketAPI || isCurrentlyManual) { 
         const outcomes = ['home', 'draw', 'away'];
+        let effectivePricesForMargin = {};
+
         outcomes.forEach(outcome => {
-            const selection = matchOddsMarket?.find(s => s.outcome === outcome);
+            const selection = matchOddsMarketAPI?.find(s => s.outcome === outcome);
             const feedPrice = selection ? selection.price : null;
             const feedMaxStake = selection ? selection.maxStake : null;
             const feedProbability = selection ? selection.probability : null;
             
-            let currentPriceForCalc = feedPrice; 
+            let currentDisplayPrice = feedPrice; 
             if (isCurrentlyManual) {
                 if ((currentManualInputType === 'supremacy' || currentManualInputType === 'semi_auto') && currentManualEventData.impliedOdds) {
-                    currentPriceForCalc = parseFloat(currentManualEventData.impliedOdds[outcome]);
+                    currentDisplayPrice = parseFloat(currentManualEventData.impliedOdds[outcome] || feedPrice);
                 } else { 
-                    currentPriceForCalc = parseFloat(currentManualEventData[outcome]);
+                    currentDisplayPrice = parseFloat(currentManualEventData[outcome] || feedPrice);
                 }
             }
+            effectivePricesForMargin[outcome] = currentDisplayPrice;
             
-            if (outcome === 'home') { homeProb = currentPriceForCalc > 0 ? (1/currentPriceForCalc) : null; egHomePrice = currentPriceForCalc; }
-            if (outcome === 'draw') { drawProb = currentPriceForCalc > 0 ? (1/currentPriceForCalc) : null; }
-            if (outcome === 'away') { awayProb = currentPriceForCalc > 0 ? (1/currentPriceForCalc) : null; egAwayPrice = currentPriceForCalc; }
+            // Set prices for xG solver based on feed or direct manual input for these primary markets
+            if (outcome === 'home') egHomePrice = (isCurrentlyManual && currentManualInputType === 'odds' && currentManualEventData.home) ? parseFloat(currentManualEventData.home) : feedPrice;
+            if (outcome === 'away') egAwayPrice = (isCurrentlyManual && currentManualInputType === 'odds' && currentManualEventData.away) ? parseFloat(currentManualEventData.away) : feedPrice;
             
             matchOddsGridHtml += createOddsSelectionHTML(outcome.charAt(0).toUpperCase() + outcome.slice(1), feedPrice, feedMaxStake, feedProbability, eventKey, 'match_odds', outcome, isCurrentlyManual, currentManualInputType, currentManualEventData );
         });
-        if (homeProb && drawProb && awayProb) {
-            const sumProbs = homeProb + drawProb + awayProb;
-            if (sumProbs > 0 && sumProbs < Infinity) { const margin = (sumProbs - 1) * 100; matchOddsMarginText = `Margin: ${margin.toFixed(2)}%`; }
+
+        if (effectivePricesForMargin.home > 0 && effectivePricesForMargin.draw > 0 && effectivePricesForMargin.away > 0 && 
+            !isNaN(effectivePricesForMargin.home) && !isNaN(effectivePricesForMargin.draw) && !isNaN(effectivePricesForMargin.away)) {
+            const p1 = 1 / effectivePricesForMargin.home;
+            const p2 = 1 / effectivePricesForMargin.draw;
+            const p3 = 1 / effectivePricesForMargin.away;
+            const sumProbs = p1 + p2 + p3;
+            if (sumProbs > 0 && sumProbs < Infinity) { matchOddsMarginText = `Margin: ${((sumProbs - 1) * 100).toFixed(2)}%`; }
         }
         matchOddsGridHtml += '</div>';
     } else { matchOddsGridHtml = '<p class="text-xs text-gray-500">Match odds not available.</p>'; }
     marketOddsInfoElem.innerHTML = `<div class="market-title-container"><h3 class="market-title">Match Odds</h3><span class="market-margin">${matchOddsMarginText}</span></div>${matchOddsGridHtml}`;
 
     // --- Both Teams to Score ---
-    let bttsYesProb = null, bttsNoProb = null;
     let bttsMarginText = "Margin: N/A";
-    const bttsMarket = event.markets?.['soccer.both_teams_to_score']?.submarkets?.['period=ft']?.selections;
+    const bttsMarketAPI = event.markets?.['soccer.both_teams_to_score']?.submarkets?.['period=ft']?.selections;
     let bttsGridHtml = '<div class="odds-grid btts-grid">';
 
-    if (bttsMarket || isCurrentlyManual) {
-        const outcomes = ['yes', 'no'];
-        outcomes.forEach(outcome => {
-            const selection = bttsMarket?.find(s => s.outcome === outcome);
+    if (bttsMarketAPI || isCurrentlyManual) {
+        const outcomes = [{api: 'yes', type: 'bttsYes'}, {api: 'no', type: 'bttsNo'}];
+        let effectivePricesForBTTSMargin = {};
+
+        outcomes.forEach(o => {
+            const selection = bttsMarketAPI?.find(s => s.outcome === o.api);
             const feedPrice = selection ? selection.price : null;
             const feedMaxStake = selection ? selection.maxStake : null;
             const feedProbability = selection ? selection.probability : null;
-            const outcomeType = outcome === 'yes' ? 'bttsYes' : 'bttsNo';
-
-            let currentPriceForCalc = feedPrice;
+            
+            let currentDisplayPrice = feedPrice;
             if (isCurrentlyManual) {
                  if ((currentManualInputType === 'supremacy' || currentManualInputType === 'semi_auto') && currentManualEventData.impliedOdds) {
-                    currentPriceForCalc = parseFloat(currentManualEventData.impliedOdds[outcomeType]);
+                    currentDisplayPrice = parseFloat(currentManualEventData.impliedOdds[o.type] || feedPrice);
                 } else {
-                    currentPriceForCalc = parseFloat(currentManualEventData[outcomeType]);
+                    currentDisplayPrice = parseFloat(currentManualEventData[o.type] || feedPrice);
                 }
             }
-            if (outcome === 'yes') { bttsYesProb = currentPriceForCalc > 0 ? (1/currentPriceForCalc) : null; }
-            if (outcome === 'no') { bttsNoProb = currentPriceForCalc > 0 ? (1/currentPriceForCalc) : null; }
+            effectivePricesForBTTSMargin[o.api] = currentDisplayPrice;
 
             bttsGridHtml += createOddsSelectionHTML(
-                outcome.charAt(0).toUpperCase() + outcome.slice(1), 
+                o.api.charAt(0).toUpperCase() + o.api.slice(1), 
                 feedPrice, feedMaxStake, feedProbability, 
-                eventKey, 'btts', outcomeType, isCurrentlyManual, currentManualInputType, currentManualEventData
+                eventKey, 'btts', o.type, isCurrentlyManual, currentManualInputType, currentManualEventData
             );
         });
-        if (bttsYesProb && bttsNoProb) {
-            const sumProbs = bttsYesProb + bttsNoProb;
-            if (sumProbs > 0 && sumProbs < Infinity) { const margin = (sumProbs - 1) * 100; bttsMarginText = `Margin: ${margin.toFixed(2)}%`; }
+        if (effectivePricesForBTTSMargin.yes > 0 && effectivePricesForBTTSMargin.no > 0 &&
+            !isNaN(effectivePricesForBTTSMargin.yes) && !isNaN(effectivePricesForBTTSMargin.no)) {
+            const pYes = 1 / effectivePricesForBTTSMargin.yes;
+            const pNo = 1 / effectivePricesForBTTSMargin.no;
+            const sumProbs = pYes + pNo;
+            if (sumProbs > 0 && sumProbs < Infinity) { bttsMarginText = `Margin: ${((sumProbs - 1) * 100).toFixed(2)}%`;}
         }
          bttsGridHtml += '</div>';
     } else {
@@ -825,146 +1075,140 @@ function displaySelectedInfo(competitionKey, eventKey) {
     bttsInfoElem.innerHTML = `<div class="market-title-container"><h3 class="market-title">Both Teams to Score</h3><span class="market-margin">${bttsMarginText}</span></div>${bttsGridHtml}`;
 
 
-    // --- Total Goals 2.5 (Full Time) ---
-    let over25Prob = null, under25Prob = null;
-    let totalGoals25MarginText = "Margin: N/A";
-    let totalGoalsHtmlContent = "";
-    const totalGoalsMarket = event.markets?.['soccer.total_goals']?.submarkets?.['period=ft']?.selections;
-    let found25Line = false;
-    
-    if (totalGoalsMarket || isCurrentlyManual) {
-        const over25Selection = totalGoalsMarket?.find(s => s.params === "total=2.5" && s.outcome === "over");
-        const under25Selection = totalGoalsMarket?.find(s => s.params === "total=2.5" && s.outcome === "under");
+    // --- Total Goals (Full Time) - Expanded ---
+    const ftGoalLinesToDisplay = ["0.5", "0.75", "1.0", "1.25", "1.5", "1.75", "2.0", "2.25", "2.5", "2.75", "3.0", "3.25", "3.5", "3.75", "4.0", "4.25", "4.5"];
+    let ftTotalGoalsHtmlCombined = '';
+    const ftTotalGoalsMarketAPIAll = event.markets?.['soccer.total_goals']?.submarkets?.['period=ft']?.selections;
 
-        if (over25Selection || under25Selection || isCurrentlyManual) {
-             found25Line = true;
-             totalGoalsHtmlContent += `<div class="odds-grid total-goals-options-grid mt-1">`;
-            
-            const feedOverPrice = over25Selection ? over25Selection.price : null;
-            const feedOverMaxStake = over25Selection ? over25Selection.maxStake : null;
-            const feedOverProbability = over25Selection ? over25Selection.probability : null;
-            let currentOverPriceForCalc = feedOverPrice;
-            if(isCurrentlyManual) {
-                if((currentManualInputType === 'supremacy' || currentManualInputType === 'semi_auto') && currentManualEventData.impliedOdds) currentOverPriceForCalc = parseFloat(currentManualEventData.impliedOdds.over25);
-                else currentOverPriceForCalc = parseFloat(currentManualEventData.over25);
-            }
-            over25Prob = currentOverPriceForCalc > 0 ? (1/currentOverPriceForCalc) : null;
-            egOver25Price = currentOverPriceForCalc;
-            totalGoalsHtmlContent += createOddsSelectionHTML('Over 2.5', feedOverPrice, feedOverMaxStake, feedOverProbability, eventKey, 'total_goals', 'over25', isCurrentlyManual, currentManualInputType, currentManualEventData);
+    ftGoalLinesToDisplay.forEach(line => {
+        let lineSpecificHtml = '';
+        const outcomeTypeOver = `over${line.replace('.', '')}`;
+        const outcomeTypeUnder = `under${line.replace('.', '')}`;
 
-            const feedUnderPrice = under25Selection ? under25Selection.price : null;
-            const feedUnderMaxStake = under25Selection ? under25Selection.maxStake : null;
-            const feedUnderProbability = under25Selection ? under25Selection.probability : null;
-            let currentUnderPriceForCalc = feedUnderPrice;
-             if(isCurrentlyManual) {
-                if((currentManualInputType === 'supremacy' || currentManualInputType === 'semi_auto') && currentManualEventData.impliedOdds) currentUnderPriceForCalc = parseFloat(currentManualEventData.impliedOdds.under25);
-                else currentUnderPriceForCalc = parseFloat(currentManualEventData.under25);
-            }
-            under25Prob = currentUnderPriceForCalc > 0 ? (1/currentUnderPriceForCalc) : null;
-            egUnder25Price = currentUnderPriceForCalc;
-            totalGoalsHtmlContent += createOddsSelectionHTML('Under 2.5', feedUnderPrice, feedUnderMaxStake, feedUnderProbability, eventKey, 'total_goals', 'under25', isCurrentlyManual, currentManualInputType, currentManualEventData);
-            
-            totalGoalsHtmlContent += `</div>`;
+        const apiOverSelection = ftTotalGoalsMarketAPIAll?.find(s => s.params === `total=${line}` && s.outcome === "over");
+        const apiUnderSelection = ftTotalGoalsMarketAPIAll?.find(s => s.params === `total=${line}` && s.outcome === "under");
 
-            if (over25Prob && under25Prob) {
-                const sumProbs = over25Prob + under25Prob;
-                if (sumProbs > 0 && sumProbs < Infinity) { const margin = (sumProbs - 1) * 100; totalGoals25MarginText = `Margin: ${margin.toFixed(2)}%`;}
+        const feedOverPrice = apiOverSelection ? apiOverSelection.price : null;
+        const feedOverMaxStakeOver = apiOverSelection ? apiOverSelection.maxStake : null;
+        const feedOverProbability = apiOverSelection ? apiOverSelection.probability : null;
+        
+        const feedUnderPrice = apiUnderSelection ? apiUnderSelection.price : null;
+        const feedUnderMaxStakeUnder = apiUnderSelection ? apiUnderSelection.maxStake : null;
+        const feedUnderProbability = apiUnderSelection ? apiUnderSelection.probability : null;
+
+        let effectiveOverPrice = feedOverPrice;
+        let effectiveUnderPrice = feedUnderPrice;
+
+        if (isCurrentlyManual) {
+            if ((currentManualInputType === 'supremacy' || currentManualInputType === 'semi_auto') && currentManualEventData.impliedOdds) {
+                effectiveOverPrice = parseFloat(currentManualEventData.impliedOdds?.[outcomeTypeOver] || feedOverPrice);
+                effectiveUnderPrice = parseFloat(currentManualEventData.impliedOdds?.[outcomeTypeUnder] || feedUnderPrice);
+            } else { 
+                effectiveOverPrice = parseFloat(currentManualEventData[outcomeTypeOver] || feedOverPrice);
+                effectiveUnderPrice = parseFloat(currentManualEventData[outcomeTypeUnder] || feedUnderPrice);
             }
         }
-    }
-    if (!found25Line && !isCurrentlyManual) { 
-        totalGoalsHtmlContent = '<p class="text-xs text-gray-500">Total 2.5 goals line not available for this event.</p>';
-        totalGoals25MarginText = ''; 
-    }
-    totalGoalsInfoElem.innerHTML = `<div class="market-title-container"><h3 class="market-title">Total Goals 2.5 (Full Time)</h3><span class="market-margin">${totalGoals25MarginText}</span></div>${totalGoalsHtmlContent}`;
-
-    // --- Total Goals First Half (1.5 or 0.5) ---
-    let fhOverProb = null, fhUnderProb = null;
-    let fhMarginText = "Margin: N/A";
-    let fhHtmlContent = "";
-    let displayedFHLine = null;
-    let fhOutcomeTypeOver = null, fhOutcomeTypeUnder = null;
-
-    const fhTotalGoalsMarketAll = event.markets?.['soccer.total_goals_period_first_half']?.submarkets;
-    let fhSelections = null;
-
-    if (fhTotalGoalsMarketAll) {
-        const submarketKey15_fh = `period=fh;total=1.5`;
-        const submarketKey15_1h = `period=1h;total=1.5`;
-        const submarketKey05_fh = `period=fh;total=0.5`;
-        const submarketKey05_1h = `period=1h;total=0.5`;
-
-        if (fhTotalGoalsMarketAll[submarketKey15_fh]) {
-            fhSelections = fhTotalGoalsMarketAll[submarketKey15_fh].selections;
-            displayedFHLine = 1.5;
-            fhOutcomeTypeOver = 'over15FH'; fhOutcomeTypeUnder = 'under15FH';
-        } else if (fhTotalGoalsMarketAll[submarketKey15_1h]) {
-            fhSelections = fhTotalGoalsMarketAll[submarketKey15_1h].selections;
-            displayedFHLine = 1.5;
-            fhOutcomeTypeOver = 'over15FH'; fhOutcomeTypeUnder = 'under15FH';
-        } else if (fhTotalGoalsMarketAll[submarketKey05_fh]) {
-            fhSelections = fhTotalGoalsMarketAll[submarketKey05_fh].selections;
-            displayedFHLine = 0.5;
-            fhOutcomeTypeOver = 'over05FH'; fhOutcomeTypeUnder = 'under05FH';
-        } else if (fhTotalGoalsMarketAll[submarketKey05_1h]) {
-             fhSelections = fhTotalGoalsMarketAll[submarketKey05_1h].selections;
-            displayedFHLine = 0.5;
-            fhOutcomeTypeOver = 'over05FH'; fhOutcomeTypeUnder = 'under05FH';
+        
+        let currentLineMarginText = "Margin: N/A";
+        if (effectiveOverPrice > 0 && effectiveUnderPrice > 0 && !isNaN(effectiveOverPrice) && !isNaN(effectiveUnderPrice)) {
+            const overProbMargin = 1 / effectiveOverPrice;
+            const underProbMargin = 1 / effectiveUnderPrice;
+            const sumProbsMargin = overProbMargin + underProbMargin;
+            if (sumProbsMargin > 0 && sumProbsMargin < Infinity) {
+                currentLineMarginText = `Margin: ${((sumProbsMargin - 1) * 100).toFixed(2)}%`;
+            }
         }
-    }
-    
-    if (fhSelections || isCurrentlyManual) {
-        if (isCurrentlyManual && !displayedFHLine) { 
-            displayedFHLine = 1.5; 
-            fhOutcomeTypeOver = 'over15FH'; fhOutcomeTypeUnder = 'under15FH';
+        
+        // Only display if API provides it OR if in manual mode and user has values (or xG derived them)
+        if (apiOverSelection || apiUnderSelection || (isCurrentlyManual && (currentManualEventData[outcomeTypeOver] || currentManualEventData[outcomeTypeUnder]))) {
+            lineSpecificHtml += `<div class="market-title-container mt-3"><h4 class="market-title text-sm font-semibold">Total Goals ${line}</h4><span class="market-margin">${currentLineMarginText}</span></div>`;
+            lineSpecificHtml += `<div class="odds-grid total-goals-options-grid mt-1">`;
+            lineSpecificHtml += createOddsSelectionHTML(`Over ${line}`, feedOverPrice, feedOverMaxStakeOver, feedOverProbability, eventKey, 'total_goals', outcomeTypeOver, isCurrentlyManual, currentManualInputType, currentManualEventData, line);
+            lineSpecificHtml += createOddsSelectionHTML(`Under ${line}`, feedUnderPrice, feedUnderMaxStakeUnder, feedUnderProbability, eventKey, 'total_goals', outcomeTypeUnder, isCurrentlyManual, currentManualInputType, currentManualEventData, line);
+            lineSpecificHtml += `</div>`;
+            ftTotalGoalsHtmlCombined += lineSpecificHtml;
         }
 
-        if (displayedFHLine) { 
-            const overSelection = fhSelections?.find(s => s.outcome === "over");
-            const underSelection = fhSelections?.find(s => s.outcome === "under");
-            
-            fhHtmlContent += `<div class="odds-grid total-goals-options-grid mt-1">`;
+        if (line === "2.5") { // For xG solver, prioritize feed if available, then manual odds
+            egOver25Price = (isCurrentlyManual && currentManualInputType === 'odds' && currentManualEventData.over25) ? parseFloat(currentManualEventData.over25) : feedOverPrice;
+            egUnder25Price = (isCurrentlyManual && currentManualInputType === 'odds' && currentManualEventData.under25) ? parseFloat(currentManualEventData.under25) : feedUnderPrice;
+        }
+    });
+    if (!ftTotalGoalsHtmlCombined) {
+        ftTotalGoalsHtmlCombined = '<p class="text-xs text-gray-500 mt-1">Full Time Total Goals lines not available.</p>';
+    }
+    totalGoalsInfoElem.innerHTML = `<div class="market-title-container"><h3 class="market-title">Total Goals (Full Time)</h3></div>${ftTotalGoalsHtmlCombined}`;
 
-            const feedOverPrice = overSelection ? overSelection.price : null;
-            const feedOverMaxStake = overSelection ? overSelection.maxStake : null;
-            const feedOverProbability = overSelection ? overSelection.probability : null;
-            let currentOverPriceForCalc = feedOverPrice;
-            if(isCurrentlyManual) {
-                if((currentManualInputType === 'supremacy' || currentManualInputType === 'semi_auto') && currentManualEventData.impliedOdds) currentOverPriceForCalc = parseFloat(currentManualEventData.impliedOdds[fhOutcomeTypeOver]);
-                else currentOverPriceForCalc = parseFloat(currentManualEventData[fhOutcomeTypeOver]);
-            }
-            fhOverProb = currentOverPriceForCalc > 0 ? (1/currentOverPriceForCalc) : null;
-            fhHtmlContent += createOddsSelectionHTML(`Over ${displayedFHLine}`, feedOverPrice, feedOverMaxStake, feedOverProbability, eventKey, 'fh_total_goals', fhOutcomeTypeOver, isCurrentlyManual, currentManualInputType, currentManualEventData);
-            
-            const feedUnderPrice = underSelection ? underSelection.price : null;
-            const feedUnderMaxStake = underSelection ? underSelection.maxStake : null;
-            const feedUnderProbability = underSelection ? underSelection.probability : null;
-            let currentUnderPriceForCalc = feedUnderPrice;
-            if(isCurrentlyManual) {
-                 if((currentManualInputType === 'supremacy' || currentManualInputType === 'semi_auto') && currentManualEventData.impliedOdds) currentUnderPriceForCalc = parseFloat(currentManualEventData.impliedOdds[fhOutcomeTypeUnder]);
-                else currentUnderPriceForCalc = parseFloat(currentManualEventData[fhOutcomeTypeUnder]);
-            }
-            fhUnderProb = currentUnderPriceForCalc > 0 ? (1/currentUnderPriceForCalc) : null;
-            fhHtmlContent += createOddsSelectionHTML(`Under ${displayedFHLine}`, feedUnderPrice, feedUnderMaxStake, feedUnderProbability, eventKey, 'fh_total_goals', fhOutcomeTypeUnder, isCurrentlyManual, currentManualInputType, currentManualEventData);
-            
-            fhHtmlContent += `</div>`;
-            if (fhOverProb && fhUnderProb) {
-                const sumProbs = fhOverProb + fhUnderProb;
-                if (sumProbs > 0 && sumProbs < Infinity) { const margin = (sumProbs - 1) * 100; fhMarginText = `Margin: ${margin.toFixed(2)}%`; }
-            }
-        } else if (!isCurrentlyManual) { 
-             fhHtmlContent = `<p class="text-xs text-gray-500">1H Total Goals ${displayedFHLine || "1.5/0.5"} not available.</p>`;
-             fhMarginText = '';
+
+    // --- Total Goals First Half (Expanded) ---
+    const fhGoalLinesToDisplay = ["0.5", "0.75", "1.0", "1.25", "1.5"];
+    let fhTotalGoalsHtmlCombined = '';
+    const fhTotalGoalsAPIMarkets = event.markets?.['soccer.total_goals_period_first_half']?.submarkets;
+    let fhSelectionsAPI = null;
+
+    if (fhTotalGoalsAPIMarkets) { // Get the correct submarket's selections
+        if (fhTotalGoalsAPIMarkets['period=1h']) fhSelectionsAPI = fhTotalGoalsAPIMarkets['period=1h'].selections;
+        else if (fhTotalGoalsAPIMarkets['period=fh']) fhSelectionsAPI = fhTotalGoalsAPIMarkets['period=fh'].selections;
+    }
+
+    fhGoalLinesToDisplay.forEach(line => {
+        let lineSpecificHtmlFH = '';
+        const outcomeTypeOverFH = `over${line.replace('.', '')}FH`;
+        const outcomeTypeUnderFH = `under${line.replace('.', '')}FH`;
+
+        let apiOverSelectionFH = null, apiUnderSelectionFH = null;
+        if(fhSelectionsAPI){
+            apiOverSelectionFH = fhSelectionsAPI.find(s => s.params === `total=${line}` && s.outcome === "over");
+            apiUnderSelectionFH = fhSelectionsAPI.find(s => s.params === `total=${line}` && s.outcome === "under");
         }
 
-    } else { 
-        fhHtmlContent = `<p class="text-xs text-gray-500">1H Total Goals not available.</p>`;
-        fhMarginText = '';
+        const feedOverPriceFH = apiOverSelectionFH ? apiOverSelectionFH.price : null;
+        const feedOverMaxStakeFH = apiOverSelectionFH ? apiOverSelectionFH.maxStake : null;
+        const feedOverProbabilityFH = apiOverSelectionFH ? apiOverSelectionFH.probability : null;
+
+        const feedUnderPriceFH = apiUnderSelectionFH ? apiUnderSelectionFH.price : null;
+        const feedUnderMaxStakeFH = apiUnderSelectionFH ? apiUnderSelectionFH.maxStake : null;
+        const feedUnderProbabilityFH = apiUnderSelectionFH ? apiUnderSelectionFH.probability : null;
+
+        let effectiveOverPriceFH = feedOverPriceFH;
+        let effectiveUnderPriceFH = feedUnderPriceFH;
+
+        if (isCurrentlyManual) {
+            if ((currentManualInputType === 'supremacy' || currentManualInputType === 'semi_auto') && currentManualEventData.impliedOdds) {
+                effectiveOverPriceFH = parseFloat(currentManualEventData.impliedOdds?.[outcomeTypeOverFH] || feedOverPriceFH);
+                effectiveUnderPriceFH = parseFloat(currentManualEventData.impliedOdds?.[outcomeTypeUnderFH] || feedUnderPriceFH);
+            } else { 
+                effectiveOverPriceFH = parseFloat(currentManualEventData[outcomeTypeOverFH] || feedOverPriceFH);
+                effectiveUnderPriceFH = parseFloat(currentManualEventData[outcomeTypeUnderFH] || feedUnderPriceFH);
+            }
+        }
+        
+        let currentLineMarginTextFH = "Margin: N/A";
+        if (effectiveOverPriceFH > 0 && effectiveUnderPriceFH > 0 && !isNaN(effectiveOverPriceFH) && !isNaN(effectiveUnderPriceFH)) {
+            const overProbMarginFH = 1 / effectiveOverPriceFH;
+            const underProbMarginFH = 1 / effectiveUnderPriceFH;
+            const sumProbsMarginFH = overProbMarginFH + underProbMarginFH;
+            if (sumProbsMarginFH > 0 && sumProbsMarginFH < Infinity) {
+                currentLineMarginTextFH = `Margin: ${((sumProbsMarginFH - 1) * 100).toFixed(2)}%`;
+            }
+        }
+
+        if (apiOverSelectionFH || apiUnderSelectionFH || (isCurrentlyManual && (currentManualEventData[outcomeTypeOverFH] || currentManualEventData[outcomeTypeUnderFH]))) {
+            lineSpecificHtmlFH += `<div class="market-title-container mt-3"><h4 class="market-title text-sm font-semibold">1H Total Goals ${line}</h4><span class="market-margin">${currentLineMarginTextFH}</span></div>`;
+            lineSpecificHtmlFH += `<div class="odds-grid total-goals-options-grid mt-1">`;
+            lineSpecificHtmlFH += createOddsSelectionHTML(`Over ${line}`, feedOverPriceFH, feedOverMaxStakeFH, feedOverProbabilityFH, eventKey, 'fh_total_goals', outcomeTypeOverFH, isCurrentlyManual, currentManualInputType, currentManualEventData, line);
+            lineSpecificHtmlFH += createOddsSelectionHTML(`Under ${line}`, feedUnderPriceFH, feedUnderMaxStakeFH, feedUnderProbabilityFH, eventKey, 'fh_total_goals', outcomeTypeUnderFH, isCurrentlyManual, currentManualInputType, currentManualEventData, line);
+            lineSpecificHtmlFH += `</div>`;
+            fhTotalGoalsHtmlCombined += lineSpecificHtmlFH;
+        }
+    });
+
+    if (!fhTotalGoalsHtmlCombined) {
+        fhTotalGoalsHtmlCombined = '<p class="text-xs text-gray-500 mt-1">First Half Total Goals lines not available.</p>';
     }
-    firstHalfTotalGoalsInfoElem.innerHTML = `<div class="market-title-container"><h3 class="market-title">Total Goals 1st Half ${displayedFHLine || ''}</h3><span class="market-margin">${fhMarginText}</span></div>${fhHtmlContent}`;
+    firstHalfTotalGoalsInfoElem.innerHTML = `<div class="market-title-container"><h3 class="market-title">Total Goals (1st Half)</h3></div>${fhTotalGoalsHtmlCombined}`;
 
-
-    // --- Update Expected Goals Display (based on FT 1X2 and FT O/U 2.5) ---
+    // Update Expected Goals Display
     if (isCurrentlyManual && currentManualInputType === 'supremacy') {
         const supremacy = parseFloat(manualModeEvents[eventKey]?.supremacy || 0);
         const totalXG = parseFloat(manualModeEvents[eventKey]?.totalExpectedGoals || 0);
@@ -990,8 +1234,38 @@ function displaySelectedInfo(competitionKey, eventKey) {
     updateExpectedGoalsDisplay(eventKey, lambdaHomeForDisplay, lambdaAwayForDisplay, calculatedTotalXG, calculatedSupremacy);
     
     attachManualInputListeners(); 
+    attachChartIconListeners();
 }
         
+        function attachChartIconListeners() {
+            document.querySelectorAll('.chart-icon').forEach(icon => {
+                icon.removeEventListener('click', handleChartIconClick); 
+                icon.addEventListener('click', handleChartIconClick);
+            });
+        }
+
+        function handleChartIconClick(e) {
+            const icon = e.currentTarget; 
+            const eventName = icon.dataset.eventName;
+            const marketNameLog = icon.dataset.marketNameLog;
+            const outcomeNameLog = icon.dataset.outcomeNameLog;
+            
+            if (eventName && marketNameLog && outcomeNameLog && marketNameLog !== "N/A") { 
+                renderOddsMovementChart(eventName, marketNameLog, outcomeNameLog);
+            } else {
+                console.warn("Chart icon clicked, but missing or invalid data attributes:", icon.dataset);
+                 oddsChartContainer.classList.remove('hidden');
+                 oddsMovementChartCanvas.classList.add('hidden');
+                 chartNoDataMessage.classList.remove('hidden');
+                 chartNoDataMessage.textContent = `Cannot generate chart due to missing market details.`;
+                 oddsChartTitle.textContent = `Odds Chart`;
+                 if (currentOddsChart) {
+                    currentOddsChart.destroy();
+                    currentOddsChart = null;
+                }
+            }
+        }
+
 
         function attachManualInputListeners() {
             document.querySelectorAll('.manual-odds-input').forEach(input => {
@@ -1082,18 +1356,19 @@ function displaySelectedInfo(competitionKey, eventKey) {
                 
                 manualModeEvents[eventKey].impliedOdds = implied; 
 
-                manualModeEvents[eventKey].home = implied.home;
-                manualModeEvents[eventKey].draw = implied.draw;
-                manualModeEvents[eventKey].away = implied.away;
-                manualModeEvents[eventKey].over25 = implied.over25;
-                manualModeEvents[eventKey].under25 = implied.under25;
-                manualModeEvents[eventKey].bttsYes = implied.bttsYes;
-                manualModeEvents[eventKey].bttsNo = implied.bttsNo;
-                manualModeEvents[eventKey].over05FH = implied.over05FH !== "N/A" ? implied.over05FH : (manualModeEvents[eventKey].over05FH || "1.001");
-                manualModeEvents[eventKey].under05FH = implied.under05FH !== "N/A" ? implied.under05FH : (manualModeEvents[eventKey].under05FH || "1.001");
-                manualModeEvents[eventKey].over15FH = implied.over15FH !== "N/A" ? implied.over15FH : (manualModeEvents[eventKey].over15FH || "1.001");
-                manualModeEvents[eventKey].under15FH = implied.under15FH !== "N/A" ? implied.under15FH : (manualModeEvents[eventKey].under15FH || "1.001");
-
+                const allOutcomeTypes = [
+                    'home', 'draw', 'away', 'bttsYes', 'bttsNo',
+                    'over05', 'under05', 'over075', 'under075', 'over1', 'under1', 'over125', 'under125', 
+                    'over15', 'under15', 'over175', 'under175', 'over2', 'under2', 'over225', 'under225',
+                    'over25', 'under25', 'over275', 'under275', 'over3', 'under3', 'over325', 'under325',
+                    'over35', 'under35', 'over375', 'under375', 'over4', 'under4', 'over425', 'under425',
+                    'over45', 'under45',
+                    'over05FH', 'under05FH', 'over075FH', 'under075FH', 'over1FH', 'under1FH', 
+                    'over125FH', 'under125FH', 'over15FH', 'under15FH'
+                ];
+                allOutcomeTypes.forEach(ocType => {
+                    manualModeEvents[eventKey][ocType] = implied[ocType] !== "N/A" ? implied[ocType] : (manualModeEvents[eventKey][ocType] || "1.001");
+                });
 
                 displaySelectedInfo(competitionsDropdown.value, eventKey);
             } else {
@@ -1119,111 +1394,107 @@ function displaySelectedInfo(competitionKey, eventKey) {
             }
             desiredMarginInput.value = (desiredMarginValue * 100).toFixed(1);
 
+            const fairProbs = {}; 
 
-            const matchOddsApi = eventData.markets['soccer.match_odds']?.submarkets?.['period=ft']?.selections;
-            const bttsApi = eventData.markets['soccer.both_teams_to_score']?.submarkets?.['period=ft']?.selections;
-            const totalGoalsApi = eventData.markets['soccer.total_goals']?.submarkets?.['period=ft']?.selections;
-            const fhTotalGoalsApiMarket = eventData.markets['soccer.total_goals_period_first_half']?.submarkets;
-            let fhTotalGoalsApi_1_5 = null, fhTotalGoalsApi_0_5 = null;
+            const deriveFairProbsTwoWay = (sel1, sel2) => {
+                if (sel1?.price && sel2?.price && !isNaN(parseFloat(sel1.price)) && !isNaN(parseFloat(sel2.price)) && sel1.price > 0 && sel2.price > 0) {
+                    const p1 = 1 / parseFloat(sel1.price);
+                    const p2 = 1 / parseFloat(sel2.price);
+                    const booksum = p1 + p2;
+                    if (booksum > 0) {
+                        return { prob1: p1 / booksum, prob2: p2 / booksum };
+                    }
+                }
+                return null;
+            };
+            
+            const deriveFairProbsThreeWay = (sel1, sel2, sel3) => {
+                 if (sel1?.price && sel2?.price && sel3?.price && !isNaN(parseFloat(sel1.price)) && !isNaN(parseFloat(sel2.price)) && !isNaN(parseFloat(sel3.price)) && sel1.price > 0 && sel2.price > 0 && sel3.price > 0) {
+                    const p1 = 1 / parseFloat(sel1.price);
+                    const p2 = 1 / parseFloat(sel2.price);
+                    const p3 = 1 / parseFloat(sel3.price);
+                    const booksum = p1 + p2 + p3;
+                    if (booksum > 0) {
+                        return { prob1: p1 / booksum, prob2: p2 / booksum, prob3: p3 / booksum };
+                    }
+                }
+                return null;
+            };
 
-            if(fhTotalGoalsApiMarket) { 
-                 fhTotalGoalsApi_1_5 = fhTotalGoalsApiMarket[`period=fh;total=1.5`]?.selections || 
-                                   fhTotalGoalsApiMarket[`period=1h;total=1.5`]?.selections;
-                 fhTotalGoalsApi_0_5 = fhTotalGoalsApiMarket[`period=fh;total=0.5`]?.selections ||
-                                   fhTotalGoalsApiMarket[`period=1h;total=0.5`]?.selections;
+            const moAPI = eventData.markets['soccer.match_odds']?.submarkets?.['period=ft']?.selections;
+            if (moAPI) {
+                const moFair = deriveFairProbsThreeWay(moAPI.find(s=>s.outcome==='home'), moAPI.find(s=>s.outcome==='draw'), moAPI.find(s=>s.outcome==='away'));
+                if(moFair) { fairProbs.home = moFair.prob1; fairProbs.draw = moFair.prob2; fairProbs.away = moFair.prob3; }
             }
 
-
-            let feedHomeP=null, feedDrawP=null, feedAwayP=null;
-            let feedBttsYesP=null, feedBttsNoP=null;
-            let feedOver25P=null, feedUnder25P=null;
-            let feedOver05FHP=null, feedUnder05FHP=null; 
-            let feedOver15FHP=null, feedUnder15FHP=null;
-
-
-            if (matchOddsApi) {
-                feedHomeP = matchOddsApi.find(s => s.outcome === 'home')?.price;
-                feedDrawP = matchOddsApi.find(s => s.outcome === 'draw')?.price;
-                feedAwayP = matchOddsApi.find(s => s.outcome === 'away')?.price;
-            }
-            if (bttsApi) {
-                feedBttsYesP = bttsApi.find(s => s.outcome === 'yes')?.price;
-                feedBttsNoP = bttsApi.find(s => s.outcome === 'no')?.price;
-            }
-            if (totalGoalsApi) {
-                feedOver25P = totalGoalsApi.find(s => s.params === "total=2.5" && s.outcome === "over")?.price;
-                feedUnder25P = totalGoalsApi.find(s => s.params === "total=2.5" && s.outcome === "under")?.price;
-            }
-            if (fhTotalGoalsApi_1_5) {
-                feedOver15FHP = fhTotalGoalsApi_1_5.find(s => s.outcome === "over")?.price;
-                feedUnder15FHP = fhTotalGoalsApi_1_5.find(s => s.outcome === "under")?.price;
-            }
-            if (fhTotalGoalsApi_0_5) {
-                feedOver05FHP = fhTotalGoalsApi_0_5.find(s => s.outcome === "over")?.price;
-                feedUnder05FHP = fhTotalGoalsApi_0_5.find(s => s.outcome === "under")?.price;
+            const bttsAPI = eventData.markets['soccer.both_teams_to_score']?.submarkets?.['period=ft']?.selections;
+            if(bttsAPI) {
+                const bttsFair = deriveFairProbsTwoWay(bttsAPI.find(s=>s.outcome==='yes'), bttsAPI.find(s=>s.outcome==='no'));
+                if(bttsFair) { fairProbs.bttsYes = bttsFair.prob1; fairProbs.bttsNo = bttsFair.prob2;}
             }
             
-            const fairProbs = {};
-            if (feedHomeP && feedDrawP && feedAwayP) {
-                const ipH = 1/feedHomeP, ipD = 1/feedDrawP, ipA = 1/feedAwayP;
-                const booksum1X2 = ipH + ipD + ipA;
-                fairProbs.home = booksum1X2 > 0 ? ipH / booksum1X2 : 0;
-                fairProbs.draw = booksum1X2 > 0 ? ipD / booksum1X2 : 0;
-                fairProbs.away = booksum1X2 > 0 ? ipA / booksum1X2 : 0;
-            }
-             if (feedBttsYesP && feedBttsNoP) {
-                const ipBYes = 1/feedBttsYesP, ipBNo = 1/feedBttsNoP;
-                const booksumBtts = ipBYes + ipBNo;
-                fairProbs.bttsYes = booksumBtts > 0 ? ipBYes / booksumBtts : 0;
-                fairProbs.bttsNo = booksumBtts > 0 ? ipBNo / booksumBtts : 0;
-            }
-            if (feedOver25P && feedUnder25P) {
-                const ipO25 = 1/feedOver25P, ipU25 = 1/feedUnder25P;
-                const booksumOU25 = ipO25 + ipU25;
-                fairProbs.over25 = booksumOU25 > 0 ? ipO25 / booksumOU25 : 0;
-                fairProbs.under25 = booksumOU25 > 0 ? ipU25 / booksumOU25 : 0;
-            }
-             if (feedOver15FHP && feedUnder15FHP) {
-                const ipO15FH = 1/feedOver15FHP, ipU15FH = 1/feedUnder15FHP;
-                const booksumOU15FH = ipO15FH + ipU15FH;
-                fairProbs.over15FH = booksumOU15FH > 0 ? ipO15FH / booksumOU15FH : 0;
-                fairProbs.under15FH = booksumOU15FH > 0 ? ipU15FH / booksumOU15FH : 0;
-            }
-            if (fhTotalGoalsApi_0_5) { 
-                const ipO05FH = 1/feedOver05FHP, ipU05FH = 1/feedUnder05FHP;
-                const booksumOU05FH = ipO05FH + ipU05FH;
-                fairProbs.over05FH = booksumOU05FH > 0 ? ipO05FH / booksumOU05FH : 0;
-                fairProbs.under05FH = booksumOU05FH > 0 ? ipU05FH / booksumOU05FH : 0;
+            const ftTgAPI = eventData.markets['soccer.total_goals']?.submarkets?.['period=ft']?.selections;
+            if (ftTgAPI) {
+                ["0.5", "0.75", "1.0", "1.25", "1.5", "1.75", "2.0", "2.25", "2.5", "2.75", "3.0", "3.25", "3.5", "3.75", "4.0", "4.25", "4.5"].forEach(line => {
+                    const overSel = ftTgAPI.find(s => s.params === `total=${line}` && s.outcome === "over");
+                    const underSel = ftTgAPI.find(s => s.params === `total=${line}` && s.outcome === "under");
+                    const tgFair = deriveFairProbsTwoWay(overSel, underSel);
+                    if (tgFair) {
+                        fairProbs[`over${line.replace('.', '')}`] = tgFair.prob1;
+                        fairProbs[`under${line.replace('.', '')}`] = tgFair.prob2;
+                    }
+                });
             }
 
+            const fhTgAPIMarkets = eventData.markets['soccer.total_goals_period_first_half']?.submarkets;
+            if (fhTgAPIMarkets) {
+                let fhSubmarketKeyToUse = null;
+                if (fhTgAPIMarkets['period=1h']) fhSubmarketKeyToUse = 'period=1h';
+                else if (fhTgAPIMarkets['period=fh']) fhSubmarketKeyToUse = 'period=fh';
 
+                if (fhSubmarketKeyToUse && fhTgAPIMarkets[fhSubmarketKeyToUse]?.selections) {
+                    const fhSelectionsAPI = fhTgAPIMarkets[fhSubmarketKeyToUse].selections;
+                    ["0.5", "0.75", "1.0", "1.25", "1.5"].forEach(line => {
+                        const overSelFH = fhSelectionsAPI.find(s => s.params === `total=${line}` && s.outcome === "over");
+                        const underSelFH = fhSelectionsAPI.find(s => s.params === `total=${line}` && s.outcome === "under");
+                        const fhTgFair = deriveFairProbsTwoWay(overSelFH, underSelFH);
+                        if (fhTgFair) {
+                            fairProbs[`over${line.replace('.', '')}FH`] = fhTgFair.prob1;
+                            fairProbs[`under${line.replace('.', '')}FH`] = fhTgFair.prob2;
+                        }
+                    });
+                }
+            }
+            
             const newOddsWithUserMargin = applyMarginToFairProbs(fairProbs, desiredMarginValue);
-            manualModeEvents[eventKey].impliedOdds = newOddsWithUserMargin;
+            manualModeEvents[eventKey].impliedOdds = newOddsWithUserMargin; 
 
-            manualModeEvents[eventKey].home = newOddsWithUserMargin.home !== "N/A" ? newOddsWithUserMargin.home : (feedHomeP || 1.001).toFixed(3);
-            manualModeEvents[eventKey].draw = newOddsWithUserMargin.draw !== "N/A" ? newOddsWithUserMargin.draw : (feedDrawP || 1.001).toFixed(3);
-            manualModeEvents[eventKey].away = newOddsWithUserMargin.away !== "N/A" ? newOddsWithUserMargin.away : (feedAwayP || 1.001).toFixed(3);
-            manualModeEvents[eventKey].bttsYes = newOddsWithUserMargin.bttsYes !== "N/A" ? newOddsWithUserMargin.bttsYes : (feedBttsYesP || 1.001).toFixed(3);
-            manualModeEvents[eventKey].bttsNo = newOddsWithUserMargin.bttsNo !== "N/A" ? newOddsWithUserMargin.bttsNo : (feedBttsNoP || 1.001).toFixed(3);
-            manualModeEvents[eventKey].over25 = newOddsWithUserMargin.over25 !== "N/A" ? newOddsWithUserMargin.over25 : (feedOver25P || 1.001).toFixed(3);
-            manualModeEvents[eventKey].under25 = newOddsWithUserMargin.under25 !== "N/A" ? newOddsWithUserMargin.under25 : (feedUnder25P || 1.001).toFixed(3);
+            const allOutcomeTypes = [
+                'home', 'draw', 'away', 'bttsYes', 'bttsNo',
+                'over05', 'under05', 'over075', 'under075', 'over1', 'under1', 'over125', 'under125', 
+                'over15', 'under15', 'over175', 'under175', 'over2', 'under2', 'over225', 'under225',
+                'over25', 'under25', 'over275', 'under275', 'over3', 'under3', 'over325', 'under325',
+                'over35', 'under35', 'over375', 'under375', 'over4', 'under4', 'over425', 'under425',
+                'over45', 'under45',
+                'over05FH', 'under05FH', 'over075FH', 'under075FH', 'over1FH', 'under1FH', 
+                'over125FH', 'under125FH', 'over15FH', 'under15FH'
+            ];
+            allOutcomeTypes.forEach(ocType => {
+                manualModeEvents[eventKey][ocType] = newOddsWithUserMargin[ocType] !== "N/A" ? newOddsWithUserMargin[ocType] : (manualModeEvents[eventKey][ocType] || "1.001");
+            });
             
-            manualModeEvents[eventKey].over15FH = newOddsWithUserMargin.over15FH !== "N/A" ? newOddsWithUserMargin.over15FH : (feedOver15FHP || 1.001).toFixed(3);
-            manualModeEvents[eventKey].under15FH = newOddsWithUserMargin.under15FH !== "N/A" ? newOddsWithUserMargin.under15FH : (feedUnder15FHP || 1.001).toFixed(3);
-            manualModeEvents[eventKey].over05FH = newOddsWithUserMargin.over05FH !== "N/A" ? newOddsWithUserMargin.over05FH : (feedOver05FHP || 1.001).toFixed(3);
-            manualModeEvents[eventKey].under05FH = newOddsWithUserMargin.under05FH !== "N/A" ? newOddsWithUserMargin.under05FH : (feedUnder05FHP || 1.001).toFixed(3);
-            
-            const xgResult = calculateExpectedGoalsFromPrices(
-                parseFloat(manualModeEvents[eventKey].over25),
-                parseFloat(manualModeEvents[eventKey].under25),
-                parseFloat(manualModeEvents[eventKey].home),
-                parseFloat(manualModeEvents[eventKey].away)
-            );
-            if (xgResult) {
-                manualModeEvents[eventKey].supremacy = xgResult.supremacy.toFixed(2);
-                manualModeEvents[eventKey].totalExpectedGoals = xgResult.totalExpectedGoals.toFixed(2);
+            if (manualModeEvents[eventKey].over25 && manualModeEvents[eventKey].under25 && manualModeEvents[eventKey].home && manualModeEvents[eventKey].away) {
+                const xgResult = calculateExpectedGoalsFromPrices(
+                    parseFloat(manualModeEvents[eventKey].over25),
+                    parseFloat(manualModeEvents[eventKey].under25),
+                    parseFloat(manualModeEvents[eventKey].home),
+                    parseFloat(manualModeEvents[eventKey].away)
+                );
+                if (xgResult) {
+                    manualModeEvents[eventKey].supremacy = xgResult.supremacy.toFixed(2);
+                    manualModeEvents[eventKey].totalExpectedGoals = xgResult.totalExpectedGoals.toFixed(2);
+                }
             }
-            
             displaySelectedInfo(competitionsDropdown.value, eventKey);
         }
         
@@ -1258,17 +1529,19 @@ function displaySelectedInfo(competitionKey, eventKey) {
                         supremacyExpectancyInputsDiv.classList.add('hidden');
                         desiredMarginInputContainer.classList.add('hidden');
                         if (manualModeEvents[eventKey]) {
-                             delete manualModeEvents[eventKey].impliedOdds;
-                             const xgResult = calculateExpectedGoalsFromPrices(
-                                parseFloat(manualModeEvents[eventKey].over25),
-                                parseFloat(manualModeEvents[eventKey].under25),
-                                parseFloat(manualModeEvents[eventKey].home),
-                                parseFloat(manualModeEvents[eventKey].away)
-                            );
-                            if (xgResult) {
-                                manualModeEvents[eventKey].supremacy = xgResult.supremacy.toFixed(2);
-                                manualModeEvents[eventKey].totalExpectedGoals = xgResult.totalExpectedGoals.toFixed(2);
-                            }
+                             delete manualModeEvents[eventKey].impliedOdds; 
+                             if (manualModeEvents[eventKey].over25 && manualModeEvents[eventKey].under25 && manualModeEvents[eventKey].home && manualModeEvents[eventKey].away) {
+                                const xgResult = calculateExpectedGoalsFromPrices(
+                                    parseFloat(manualModeEvents[eventKey].over25),
+                                    parseFloat(manualModeEvents[eventKey].under25),
+                                    parseFloat(manualModeEvents[eventKey].home),
+                                    parseFloat(manualModeEvents[eventKey].away)
+                                );
+                                if (xgResult) {
+                                    manualModeEvents[eventKey].supremacy = xgResult.supremacy.toFixed(2);
+                                    manualModeEvents[eventKey].totalExpectedGoals = xgResult.totalExpectedGoals.toFixed(2);
+                                }
+                             }
                         }
                     }
                 }
@@ -1284,72 +1557,59 @@ function displaySelectedInfo(competitionKey, eventKey) {
                 manualModeEvents[eventKey] = {}; 
                 const competition = allEventsData.find(comp => comp.events.some(evt => evt.key === eventKey));
                 const eventData = competition?.events.find(evt => evt.key === eventKey);
-                let initialSupremacy = 0;
-                let initialExpectancy = 2.5;
-                let homeP=1.001, drawP=1.001, awayP=1.001;
-                let overP25=1.001, underP25=1.001;
-                let bttsYesP=1.001, bttsNoP=1.001;
-                let overP05FH=1.001, underP05FH=1.001;
-                let overP15FH=1.001, underP15FH=1.001;
-
+                
+                const outcomesToInit = {
+                    home: null, draw: null, away: null, bttsYes: null, bttsNo: null,
+                    over05: null, under05: null, over075: null, under075: null, over1: null, under1: null, over125: null, under125: null,
+                    over15: null, under15: null, over175: null, under175: null, over2: null, under2: null, over225: null, under225: null,
+                    over25: null, under25: null, over275: null, under275: null, over3: null, under3: null, over325: null, under325: null,
+                    over35: null, under35: null, over375: null, under375: null, over4: null, under4: null, over425: null, under425: null,
+                    over45: null, under45: null,
+                    over05FH: null, under05FH: null, over075FH: null, under075FH: null, over1FH: null, under1FH: null,
+                    over125FH: null, under125FH: null, over15FH: null, under15FH: null
+                };
 
                 if (eventData?.markets) {
-                    const matchOddsApi = eventData.markets['soccer.match_odds']?.submarkets?.['period=ft']?.selections;
-                    const bttsApi = eventData.markets['soccer.both_teams_to_score']?.submarkets?.['period=ft']?.selections;
-                    const totalGoalsApi = eventData.markets['soccer.total_goals']?.submarkets?.['period=ft']?.selections;
-                    const fhTotalGoalsApiMarket = eventData.markets['soccer.total_goals_period_first_half']?.submarkets;
+                    const mo = eventData.markets['soccer.match_odds']?.submarkets?.['period=ft']?.selections;
+                    if(mo) { outcomesToInit.home = mo.find(s=>s.outcome==='home')?.price; outcomesToInit.draw = mo.find(s=>s.outcome==='draw')?.price; outcomesToInit.away = mo.find(s=>s.outcome==='away')?.price; }
+                    
+                    const btts = eventData.markets['soccer.both_teams_to_score']?.submarkets?.['period=ft']?.selections;
+                    if(btts) { outcomesToInit.bttsYes = btts.find(s=>s.outcome==='yes')?.price; outcomesToInit.bttsNo = btts.find(s=>s.outcome==='no')?.price; }
 
-
-                    if (matchOddsApi) {
-                        homeP = (matchOddsApi.find(s => s.outcome === 'home')?.price || 1.001);
-                        drawP = (matchOddsApi.find(s => s.outcome === 'draw')?.price || 1.001);
-                        awayP = (matchOddsApi.find(s => s.outcome === 'away')?.price || 1.001);
+                    const tg = eventData.markets['soccer.total_goals']?.submarkets?.['period=ft']?.selections;
+                    if(tg) {
+                        ["0.5", "0.75", "1.0", "1.25", "1.5", "1.75", "2.0", "2.25", "2.5", "2.75", "3.0", "3.25", "3.5", "3.75", "4.0", "4.25", "4.5"].forEach(line => {
+                            outcomesToInit[`over${line.replace('.','')}`] = tg.find(s=>s.params===`total=${line}`&&s.outcome==="over")?.price;
+                            outcomesToInit[`under${line.replace('.','')}`] = tg.find(s=>s.params===`total=${line}`&&s.outcome==="under")?.price;
+                        });
                     }
-                    if (bttsApi) {
-                        bttsYesP = (bttsApi.find(s => s.outcome === 'yes')?.price || 1.001);
-                        bttsNoP = (bttsApi.find(s => s.outcome === 'no')?.price || 1.001);
-                    }
-                    if (totalGoalsApi) {
-                        overP25 = (totalGoalsApi.find(s => s.params === "total=2.5" && s.outcome === "over")?.price || 1.001);
-                        underP25 = (totalGoalsApi.find(s => s.params === "total=2.5" && s.outcome === "under")?.price || 1.001);
-                    }
-                    if (fhTotalGoalsApiMarket) {
-                        const selections15 = fhTotalGoalsApiMarket[`period=fh;total=1.5`]?.selections || fhTotalGoalsApiMarket[`period=1h;total=1.5`]?.selections;
-                        const selections05 = fhTotalGoalsApiMarket[`period=fh;total=0.5`]?.selections || fhTotalGoalsApiMarket[`period=1h;total=0.5`]?.selections;
-                        if (selections15) {
-                            overP15FH = (selections15.find(s => s.outcome === "over")?.price || 1.001);
-                            underP15FH = (selections15.find(s => s.outcome === "under")?.price || 1.001);
-                        }
-                         if (selections05) { 
-                            overP05FH = (selections05.find(s => s.outcome === "over")?.price || 1.001);
-                            underP05FH = (selections05.find(s => s.outcome === "under")?.price || 1.001);
+                    const fhtgMarkets = eventData.markets['soccer.total_goals_period_first_half']?.submarkets;
+                    if(fhtgMarkets) {
+                        let fhSubmarketKeyToUse = null;
+                        if (fhtgMarkets['period=1h']) fhSubmarketKeyToUse = 'period=1h';
+                        else if (fhtgMarkets['period=fh']) fhSubmarketKeyToUse = 'period=fh';
+                        
+                        if (fhSubmarketKeyToUse && fhtgMarkets[fhSubmarketKeyToUse]?.selections) {
+                            const fhtgSels = fhtgMarkets[fhSubmarketKeyToUse].selections;
+                            ["0.5", "0.75", "1.0", "1.25", "1.5"].forEach(line => {
+                                 outcomesToInit[`over${line.replace('.','')}FH`] = fhtgSels.find(s=>s.params===`total=${line}`&&s.outcome==="over")?.price;
+                                 outcomesToInit[`under${line.replace('.','')}FH`] = fhtgSels.find(s=>s.params===`total=${line}`&&s.outcome==="under")?.price;
+                            });
                         }
                     }
                 }
-                manualModeEvents[eventKey].home = parseFloat(homeP).toFixed(3);
-                manualModeEvents[eventKey].draw = parseFloat(drawP).toFixed(3);
-                manualModeEvents[eventKey].away = parseFloat(awayP).toFixed(3);
-                manualModeEvents[eventKey].bttsYes = parseFloat(bttsYesP).toFixed(3);
-                manualModeEvents[eventKey].bttsNo = parseFloat(bttsNoP).toFixed(3);
-                manualModeEvents[eventKey].over25 = parseFloat(overP25).toFixed(3);
-                manualModeEvents[eventKey].under25 = parseFloat(underP25).toFixed(3);
-                manualModeEvents[eventKey].over05FH = parseFloat(overP05FH).toFixed(3); 
-                manualModeEvents[eventKey].under05FH = parseFloat(underP05FH).toFixed(3);
-                manualModeEvents[eventKey].over15FH = parseFloat(overP15FH).toFixed(3);
-                manualModeEvents[eventKey].under15FH = parseFloat(underP15FH).toFixed(3);
-
-
-                 const xgResult = calculateExpectedGoalsFromPrices(
-                    parseFloat(manualModeEvents[eventKey].over25),
-                    parseFloat(manualModeEvents[eventKey].under25),
-                    parseFloat(manualModeEvents[eventKey].home),
-                    parseFloat(manualModeEvents[eventKey].away)
-                );
-                if (xgResult) {
-                    initialSupremacy = xgResult.supremacy;
-                    initialExpectancy = xgResult.totalExpectedGoals;
+                for (const key in outcomesToInit) {
+                    manualModeEvents[eventKey][key] = parseFloat(outcomesToInit[key] || 1.001).toFixed(3);
                 }
                 
+                let initialSupremacy = 0, initialExpectancy = 2.5; 
+                if (manualModeEvents[eventKey].over25 && manualModeEvents[eventKey].under25 && manualModeEvents[eventKey].home && manualModeEvents[eventKey].away) {
+                    const xgResult = calculateExpectedGoalsFromPrices(
+                        parseFloat(manualModeEvents[eventKey].over25), parseFloat(manualModeEvents[eventKey].under25),
+                        parseFloat(manualModeEvents[eventKey].home), parseFloat(manualModeEvents[eventKey].away)
+                    );
+                    if (xgResult) { initialSupremacy = xgResult.supremacy; initialExpectancy = xgResult.totalExpectedGoals;}
+                }
                 manualModeEvents[eventKey].supremacy = initialSupremacy.toFixed(2);
                 manualModeEvents[eventKey].totalExpectedGoals = initialExpectancy.toFixed(2);
                 
