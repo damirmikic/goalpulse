@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GoalPulse- Advanced Football Feed</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css"> </head>
+<body>
+    <div id="loader" class="loader"></div>
+    <div id="errorMessage" class="error-message hidden"></div>
+    
+    <div class="main-container hidden" id="appContainer">
+        <div class="column left-column">
+            <h2 class="section-header">Competition</h2>
+            <select id="competitionsDropdown" class="select-input w-full"></select>
+            <h2 class="section-header mt-4">Events</h2>
+            <div id="eventsList" class="event-list-container">
+                </div>
+            <div id="refreshStatus" class="refresh-status hidden"></div>
+        </div>
+
+        <div class="column middle-column">
+            <h2 class="display-event-header">Display Event</h2>
+            <div id="selectedEventDetails" class="event-details-header mt-0"> 
+                 <p><strong>Event:</strong> <span id="selectedEventName">-</span></p>
+                 <p><strong>Time:</strong> <span id="selectedEventTime">-</span></p>
+            </div>
+            <div id="marketOddsInfo" class="market-section"></div>
+            <div id="bttsInfo" class="market-section"></div> 
+            <div id="totalGoalsInfo" class="market-section"></div>
+            <div id="firstHalfTotalGoalsInfo" class="market-section"></div> 
+            <div class="market-section"> 
+                <div class="market-title-container">
+                    <h3 class="market-title">Expected Goals</h3>
+                </div>
+                <div id="expectedGoalsInfo" class="expected-goals-display"></div>
+            </div>
+        </div>
+
+        <div class="column right-column">
+            <div class="manual-mode-section">
+                 <div id="modeToggleContainer" class="mode-toggle-container">
+                    <span class="mode-toggle-label">Manual Mode:</span>
+                    <label class="switch">
+                        <input type="checkbox" id="manualModeToggle">
+                        <span class="slider"></span>
+                    </label>
+                </div>
+                <div id="manualInputTypeSelector" class="radio-group my-2 hidden">
+                    <label><input type="radio" name="manualInputType" value="odds" checked> Edit Odds</label>
+                    <label><input type="radio" name="manualInputType" value="supremacy"> Edit xG Params</label>
+                    <label><input type="radio" name="manualInputType" value="semi_auto"> Semi-Auto Margin</label>
+                </div>
+                <div id="supremacyExpectancyInputs" class="hidden mt-2">
+                    <div class="input-group">
+                        <label for="manualSupremacy">Supremacy:</label>
+                        <input type="number" id="manualSupremacy" step="0.01" class="manual-odds-input">
+                    </div>
+                    <div class="input-group">
+                        <label for="manualExpectancy">Total xG:</label>
+                        <input type="number" id="manualExpectancy" step="0.01" class="manual-odds-input">
+                    </div>
+                </div>
+                 <div id="desiredMarginInputContainer" class="input-group mt-2 hidden">
+                    <label for="desiredMargin">Desired Margin (%):</label>
+                    <input type="number" id="desiredMargin" step="0.1" value="5.0" class="manual-odds-input">
+                </div>
+            </div>
+
+            <div class="market-section mt-4">
+                <h2 class="section-header">Latest Odds Changes</h2>
+                <div class="input-group my-2">
+                    <label for="percentageChangeThreshold" style="width: auto; margin-right: 0.5rem;">Min. Change (%):</label>
+                    <input type="number" id="percentageChangeThreshold" step="0.1" value="1.0" class="manual-odds-input" style="width: 60px;">
+                </div>
+                <div id="oddsChangesDisplay" class="odds-changes-container">
+                    <p class="text-xs text-gray-500">No changes recorded yet.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script> </body>
+</html>
