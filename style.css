@@ -373,3 +373,43 @@ input:checked + .slider:before {
     font-size: 0.65rem;
     color: #6b7280; 
 }
+
+.value-bet-highlight {
+    border-color: #10b981; /* emerald-500 */
+    background-color: #ecfdf5; /* emerald-50 */
+    box-shadow: 0 0 0 1px #10b981; /* A subtle ring */
+}
+.value-bet-highlight .odds-outcome {
+    color: #047857; /* emerald-700 */
+    font-weight: 600;
+}
+
+/* Added for Chart Section */
+.chart-canvas-container {
+    position: relative;
+    margin: auto;
+    height: 250px; /* Adjust as needed */
+    width: 100%;
+    max-width: 500px; /* Adjust as needed */
+    background-color: #f9fafb; /* bg-gray-50 */
+    border-radius: 0.25rem;
+    padding: 0.5rem;
+    border: 1px solid #e5e7eb; /* border-gray-200 */
+}
+
+.odds-selection .chart-icon {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    width: 16px; /* Adjust size */
+    height: 16px; /* Adjust size */
+    cursor: pointer;
+    opacity: 0.6;
+    transition: opacity 0.2s;
+}
+.odds-selection .chart-icon:hover {
+    opacity: 1;
+}
+.odds-selection { /* Ensure position relative for absolute positioning of icon */
+    position: relative; 
+}
